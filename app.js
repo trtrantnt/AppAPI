@@ -14,7 +14,10 @@ var usersRouter = require('./routes/users');
 var app = express();
 
 app.use(cors({
-  origin:'*'
+  origin: ['http://localhost:8080', 'http://localhost:8081', 'http://127.0.0.1:8080', 'http://127.0.0.1:8081'], // Allow Vue dev server
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
 }))
 
 mongoose.connect("mongodb://127.0.0.1:27017/S6");
@@ -41,7 +44,10 @@ app.use('/roles', require('./routes/roles'));
 app.use('/products', require('./routes/products'));
 app.use('/categories', require('./routes/categories'));
 
-
+// Add a simple test route to check if the server is responding
+app.get('/api/healthcheck', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date() });
+});
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {

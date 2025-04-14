@@ -3,51 +3,108 @@ var router = express.Router();
 let productSchema = require('../schemas/product')
 let categorySchema = require('../schemas/category')
 let slugify = require('slugify')
+let { check_authentication, check_authentication_optional } = require('../utils/check_auth')
+let { CreateSuccessResponse, CreateErrorResponse } = require('../utils/responseHandler')
+
 /* GET users listing. */
-router.get('/', async function (req, res, next) {
-    let query = req.query;
-    console.log(query);
-    let objQuery = {};
-    if (query.name) {
-        objQuery.name = new RegExp(query.name, 'i')
-    } else {
-        objQuery.name = new RegExp("", 'i')
-    }
-    objQuery.price = {};
-    if (query.price) {
-        if (query.price.$gte) {
-            objQuery.price.$gte = Number(query.price.$gte);
+router.get('/', check_authentication_optional, async function (req, res, next) {
+    try {
+        let query = req.query;
+        console.log("Query params:", query);
+        
+        let objQuery = {};
+        
+        // Name filter
+        if (query.name) {
+            objQuery.name = new RegExp(query.name, 'i');
+        }
+        
+        // Price filter
+        objQuery.price = {};
+        if (query.price) {
+            if (query.price.$gte) {
+                objQuery.price.$gte = Number(query.price.$gte);
+            } else {
+                objQuery.price.$gte = 0;
+            }
+            if (query.price.$lte) {
+                objQuery.price.$lte = Number(query.price.$lte);
+            } else {
+                objQuery.price.$lte = 1000000000; // Higher default upper limit
+            }
         } else {
             objQuery.price.$gte = 0;
+            objQuery.price.$lte = 1000000000;
         }
-        if (query.price.$lte) {
-            objQuery.price.$lte = Number(query.price.$lte);
+        
+        // Category filter
+        if (query.category) {
+            objQuery.category = query.category;
+        }
+        
+        // Pagination
+        const page = parseInt(query.page) || 1;
+        const limit = parseInt(query.limit) || 10;
+        const skip = (page - 1) * limit;
+        
+        // Sorting
+        let sort = {};
+        if (query.sort) {
+            if (query.sort.startsWith('-')) {
+                sort[query.sort.substring(1)] = -1;
+            } else {
+                sort[query.sort] = 1;
+            }
         } else {
-            objQuery.price.$lte = 10000;
+            sort = { createdAt: -1 }; // Default sort by newest
         }
-    } else {
-        objQuery.price.$lte = 10000;
-        objQuery.price.$gte = 0;
-    }
-
-    let products = await productSchema.find(objQuery).populate(
-        { path: 'category', select: 'name' }
-    );
-    res.send(products);
-});
-
-router.get('/:id', async function (req, res, next) {
-    try {
-        let product = await productSchema.findById(req.params.id);
-        res.send({
+        
+        console.log("Constructed query:", JSON.stringify(objQuery));
+        
+        // Execute query with pagination
+        const products = await productSchema.find(objQuery)
+            .populate('category')
+            .sort(sort)
+            .skip(skip)
+            .limit(limit);
+        
+        // Get total count for pagination
+        const total = await productSchema.countDocuments(objQuery);
+        
+        // Format response - Đảm bảo cấu trúc dữ liệu trả về chuẩn với frontend
+        res.status(200).send({
             success: true,
-            data: product
+            data: {
+                data: products,
+                total: total,
+                page: page,
+                limit: limit,
+                totalPages: Math.ceil(total / limit)
+            }
         });
     } catch (error) {
-        res.status(404).send({
-            success: false,
-            message: error.message
-        })
+        console.error("Error in GET /products:", error);
+        CreateErrorResponse(res, 500, error.message || "Internal Server Error");
+    }
+});
+
+router.get('/:id', check_authentication_optional, async function (req, res, next) {
+    try {
+        let product = await productSchema.findById(req.params.id).populate('category');
+        if (!product) {
+            return CreateErrorResponse(res, 404, "Không tìm thấy sản phẩm");
+        }
+        
+        // Trả về dữ liệu với cấu trúc phù hợp với frontend
+        res.status(200).send({
+            success: true,
+            data: {
+                data: product
+            }
+        });
+    } catch (error) {
+        console.error("Error getting product:", error);
+        CreateErrorResponse(res, 500, error.message || "Internal Server Error");
     }
 });
 
@@ -100,16 +157,15 @@ router.post('/', async function (req, res, next) {
             });
             
             await newProduct.save();
-            res.status(200).send({
-                success: true,
+            // Cấu trúc phản hồi thống nhất
+            CreateSuccessResponse(res, 200, {
                 data: newProduct
             });
         } else {
             // Let's list available categories to help diagnose the issue
             const availableCategories = await categorySchema.find({}, 'name _id');
             
-            res.status(404).send({
-                success: false,
+            CreateErrorResponse(res, 404, {
                 message: "Không tìm thấy danh mục",
                 providedCategory: body.category,
                 availableCategories: availableCategories
@@ -117,10 +173,7 @@ router.post('/', async function (req, res, next) {
         }
     } catch (error) {
         console.error("Error creating product:", error);
-        res.status(500).send({
-            success: false,
-            message: error.message
-        });
+        CreateErrorResponse(res, 500, error.message || "Error creating product");
     }
 });
 
@@ -147,54 +200,49 @@ router.put('/:id', async function (req, res, next) {
             updatedObj.category = body.category
         }
         let updatedProduct = await productSchema.findByIdAndUpdate(req.params.id, updatedObj, { new: true })
-        res.status(200).send({
-            success: true,
+        
+        // Cấu trúc phản hồi thống nhất
+        CreateSuccessResponse(res, 200, {
             data: updatedProduct
         });
     } catch (error) {
-        res.status(404).send({
-            success: false,
-            message: error.message
-        })
-    }
-});
-router.delete('/:id', async function (req, res, next) {
-    try {
-        let body = req.body;
-        let updatedProduct = await productSchema.findByIdAndUpdate(req.params.id, {
-            isDeleted: true
-        }, { new: true })
-        res.status(200).send({
-            success: true,
-            data: updatedProduct
-        });
-    } catch (error) {
-        res.status(404).send({
-            success: false,
-            message: error.message
-        })
+        console.error("Error updating product:", error);
+        CreateErrorResponse(res, 500, error.message || "Error updating product");
     }
 });
 
-router.get('/api/products/:slug', async function (req, res, next) { // Thêm route mới
+router.delete('/:id', async function (req, res, next) {
     try {
-      let product = await productSchema.findOne({ slug: req.params.slug }); // Tìm sản phẩm theo slug
-      if (product) {
-        res.send({
-          success: true,
-          data: product
+        let updatedProduct = await productSchema.findByIdAndUpdate(req.params.id, {
+            isDeleted: true
+        }, { new: true })
+        
+        // Đảm bảo phản hồi nhất quán với các API khác
+        CreateSuccessResponse(res, 200, {
+            data: updatedProduct
         });
-      } else {
-        res.status(404).send({
-          success: false,
-          message: "Không tìm thấy sản phẩm"
-        });
-      }
     } catch (error) {
-      res.status(404).send({
-        success: false,
-        message: error.message
-      });
+        console.error("Error deleting product:", error);
+        CreateErrorResponse(res, 500, error.message || "Error deleting product");
     }
-  });
+});
+
+// Route sản phẩm theo slug nên đặt trước route theo ID để tránh xung đột
+router.get('/by-slug/:slug', async function (req, res, next) {
+    try {
+        let product = await productSchema.findOne({ slug: req.params.slug }).populate('category');
+        if (!product) {
+            return CreateErrorResponse(res, 404, "Không tìm thấy sản phẩm");
+        }
+        
+        // Cấu trúc phản hồi nhất quán
+        CreateSuccessResponse(res, 200, {
+            data: product
+        });
+    } catch (error) {
+        console.error("Error getting product by slug:", error);
+        CreateErrorResponse(res, 500, error.message || "Internal Server Error");
+    }
+});
+
 module.exports = router;
