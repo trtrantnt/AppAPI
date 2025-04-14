@@ -127,18 +127,21 @@ router.put('/:id', async function(req, res, next) {
         let updatedObj = {}
         if(body.name){
             updatedObj.name = body.name
-        }if(body.description){
+            // Tạo lại slug từ tên mới
+            updatedObj.slug = slugify(body.name, { lower: true })
+        }
+        if(body.description){
             updatedObj.description = body.description
         }
-        let updatedCategory =  await categorySchema.findByIdAndUpdate(req.params.id,updatedObj,{new:true})
+        let updatedCategory = await categorySchema.findByIdAndUpdate(req.params.id, updatedObj, {new:true})
         res.status(200).send({
-            success:true,
-            data:updatedCategory
+            success: true,
+            data: updatedCategory
         });
     } catch (error) {
         res.status(404).send({
-            success:false,
-            message:error.message
+            success: false,
+            message: error.message
         })
     }
 });
