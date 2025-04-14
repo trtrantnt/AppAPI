@@ -5,13 +5,13 @@ let slugify  = require('slugify')
 
 /* GET users listing. */
 router.get('/', async function(req, res, next) {
-    let categories = await categorySchema.find({});
+    let categories = await categorySchema.find({ isDeleted: { $ne: true } });
     res.send(categories);
 });
 
 router.get('/all', async function(req, res, next) {
     try {
-        let categories = await categorySchema.find({});
+        let categories = await categorySchema.find({ isDeleted: { $ne: true } });
         res.status(200).send({
             success: true,
             data: categories
@@ -28,7 +28,7 @@ router.get('/all', async function(req, res, next) {
 router.get('/with-products', async function(req, res, next) {
     try {
         const productSchema = require('../schemas/product');
-        const categories = await categorySchema.find({});
+        const categories = await categorySchema.find({ isDeleted: { $ne: true } });
         
         // Get product counts for each category
         const result = await Promise.all(categories.map(async (category) => {
@@ -58,7 +58,7 @@ router.get('/with-products', async function(req, res, next) {
 router.get('/with-product-count', async function(req, res, next) {
     try {
         const productSchema = require('../schemas/product');
-        const categories = await categorySchema.find({});
+        const categories = await categorySchema.find({ isDeleted: { $ne: true } });
         
         // Get product counts for each category
         const result = await Promise.all(categories.map(async (category) => {
