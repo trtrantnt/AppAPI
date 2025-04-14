@@ -54,6 +54,36 @@ router.get('/with-products', async function(req, res, next) {
     }
 });
 
+// Add an alias route for the same functionality, to be consistent with frontend expectations
+router.get('/with-product-count', async function(req, res, next) {
+    try {
+        const productSchema = require('../schemas/product');
+        const categories = await categorySchema.find({});
+        
+        // Get product counts for each category
+        const result = await Promise.all(categories.map(async (category) => {
+            const count = await productSchema.countDocuments({ category: category._id });
+            return {
+                _id: category._id,
+                name: category.name,
+                description: category.description,
+                slug: category.slug,
+                productCount: count
+            };
+        }));
+        
+        res.status(200).send({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        res.status(500).send({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
 router.get('/:id', async function(req, res, next) {
     try {
         let category = await categorySchema.findById(req.params.id);
