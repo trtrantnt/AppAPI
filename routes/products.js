@@ -108,36 +108,61 @@ router.get('/:id', check_authentication_optional, async function (req, res, next
     }
 });
 
-router.post('/', async function (req, res, next) {
+router.post('/', express.json({ type: ['application/json', 'text/plain'] }), async function (req, res, next) {
     try {
+        // If the body is text/plain but valid JSON content, parse it manually
         let body = req.body;
         
-        // Debug information - log what we received
-        console.log("Creating product with data:", body);
+        if (typeof body === 'string' && req.headers['content-type'] === 'text/plain') {
+            try {
+                body = JSON.parse(body);
+                req.body = body; // Update the request body
+            } catch (parseError) {
+                console.error("Failed to parse text/plain as JSON:", parseError);
+            }
+        }
         
-        if (!body.category) {
+        // Enhanced debug logging
+        console.log("Creating product with data:", body);
+        console.log("Raw request body:", typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+        console.log("Request content type:", req.headers['content-type']);
+        
+        // Check if body is empty or undefined
+        if (!body || Object.keys(body).length === 0) {
+            console.error("Empty request body received");
             return res.status(400).send({
                 success: false,
-                message: "Category is required"
+                message: "Request body cannot be empty or is not valid JSON. Make sure to set Content-Type: application/json header"
+            });
+        }
+        
+        // Check for category field with multiple possible names
+        const categoryId = body.category || body.categoryId || body.category_id;
+        
+        if (!categoryId) {
+            console.error("No category field found in request:", body);
+            return res.status(400).send({
+                success: false,
+                message: "Category is required (use 'category' or 'categoryId' field)"
             });
         }
         
         let category;
         
-        // Check if body.category is a valid MongoDB ObjectId
-        const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(body.category);
+        // Check if categoryId is a valid MongoDB ObjectId
+        const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(categoryId);
         
         if (isValidObjectId) {
-            console.log("Looking up category by ID:", body.category);
-            category = await categorySchema.findById(body.category);
+            console.log("Looking up category by ID:", categoryId);
+            category = await categorySchema.findById(categoryId);
             if (!category) {
-                console.log("No category found with ID:", body.category);
+                console.log("No category found with ID:", categoryId);
             }
         } else {
-            console.log("Looking up category by name:", body.category);
-            category = await categorySchema.findOne({ name: body.category });
+            console.log("Looking up category by name:", categoryId);
+            category = await categorySchema.findOne({ name: categoryId });
             if (!category) {
-                console.log("No category found with name:", body.category);
+                console.log("No category found with name:", categoryId);
             }
         }
         
