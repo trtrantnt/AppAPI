@@ -11,6 +11,14 @@ let roleSchema = new mongoose.Schema({
 },{
     timestamps:true
 })
+
+// Thêm các role constants để dễ sử dụng trong hệ thống
+roleSchema.statics.ROLES = {
+    ADMIN: 'admin',
+    USER: 'user',
+    MOD: 'mod'
+}
+
 module.exports = mongoose.model('role',roleSchema)
 /*
 username: string, unique, required

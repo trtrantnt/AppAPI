@@ -1,28 +1,30 @@
 var userController = require('../controllers/users')
 let jwt = require('jsonwebtoken')
 let constants = require('../utils/constants')
+let userModel = require('../schemas/user')
+let roleHelper = require('./role-helper')
 
 module.exports = {
-    check_authentication: function (req, res, next) {
+    check_authentication: async function (req, res, next) {
         try {
-            // Extract token from headers
-            const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : null;
-            
-            if (!token) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Authentication token missing'
-                });
+            let authorization = req.header('Authorization')
+            if (!authorization) {
+                throw new Error("Vui long dang nhap")
+            } else {
+                let token = authorization.split(" ")[1]
+                let decode = jwt.verify(token, constants.SECRET_KEY)
+                
+                // Lấy thông tin user và populate role
+                const user = await userModel.findById(decode.id).populate('role');
+                if (!user) {
+                    throw new Error("User không tồn tại");
+                }
+                
+                req.user = user; // gán user đã populate role
+                next();
             }
-            
-            const decoded = jwt.verify(token, constants.SECRET_KEY);
-            req.user = decoded;
-            next();
         } catch (error) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication failed'
-            });
+            next(error)
         }
     },
 
@@ -46,11 +48,14 @@ module.exports = {
 
     check_authorization: function (requiredRole) {
         return function (req, res, next) {
-            let userRole = req.user.role.name;
-            if (!requiredRole.includes(userRole)) {
-                next(new Error("ban khong co quyen"));
+            if (!req.user) {
+                return next(new Error("Vui lòng đăng nhập"));
+            }
+            
+            if (roleHelper.hasRole(req.user, requiredRole)) {
+                next();
             } else {
-                next()
+                next(new Error("Bạn không có quyền thực hiện chức năng này"));
             }
         }
     }
