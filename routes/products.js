@@ -50,36 +50,77 @@ router.get('/:id', async function (req, res, next) {
         })
     }
 });
+
 router.post('/', async function (req, res, next) {
     try {
         let body = req.body;
-        let category = await categorySchema.findOne({ name: body.category })
+        
+        // Debug information - log what we received
+        console.log("Creating product with data:", body);
+        
+        if (!body.category) {
+            return res.status(400).send({
+                success: false,
+                message: "Category is required"
+            });
+        }
+        
+        let category;
+        
+        // Check if body.category is a valid MongoDB ObjectId
+        const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(body.category);
+        
+        if (isValidObjectId) {
+            console.log("Looking up category by ID:", body.category);
+            category = await categorySchema.findById(body.category);
+            if (!category) {
+                console.log("No category found with ID:", body.category);
+            }
+        } else {
+            console.log("Looking up category by name:", body.category);
+            category = await categorySchema.findOne({ name: body.category });
+            if (!category) {
+                console.log("No category found with name:", body.category);
+            }
+        }
+        
         if (category) {
+            console.log("Found category:", category.name, "with ID:", category._id);
+            
             let newProduct = productSchema({
                 name: body.name,
                 price: body.price ? body.price : 1000,
                 quantity: body.quantity ? body.quantity : 10,
+                description: body.description ? body.description : "khong co mo ta",
+                imgURL: body.imgURL ? body.imgURL : "https://cdn-icons-png.flaticon.com/512/149/149071.png",
                 category: category._id,
                 slug: slugify(body.name, {
                     lower: true
                 })
             });
-            await newProduct.save()
+            
+            await newProduct.save();
             res.status(200).send({
                 success: true,
                 data: newProduct
             });
         } else {
+            // Let's list available categories to help diagnose the issue
+            const availableCategories = await categorySchema.find({}, 'name _id');
+            
             res.status(404).send({
                 success: false,
-                message: "khong tim thay category"
-            })
+                message: "Không tìm thấy danh mục",
+                providedCategory: body.category,
+                availableCategories: availableCategories
+            });
         }
     } catch (error) {
-        res.status(404).send({
+        console.error("Error creating product:", error);
+        res.status(500).send({
             success: false,
             message: error.message
-        })
+        });
     }
 });
 
@@ -95,6 +136,12 @@ router.put('/:id', async function (req, res, next) {
         }
         if (body.price) {
             updatedObj.price = body.price
+        }
+        if (body.description) {
+            updatedObj.description = body.description
+        }
+        if (body.imgURL) {
+            updatedObj.imgURL = body.imgURL
         }
         if (body.category) {
             updatedObj.category = body.category
@@ -129,5 +176,25 @@ router.delete('/:id', async function (req, res, next) {
     }
 });
 
-
+router.get('/api/products/:slug', async function (req, res, next) { // Thêm route mới
+    try {
+      let product = await productSchema.findOne({ slug: req.params.slug }); // Tìm sản phẩm theo slug
+      if (product) {
+        res.send({
+          success: true,
+          data: product
+        });
+      } else {
+        res.status(404).send({
+          success: false,
+          message: "Không tìm thấy sản phẩm"
+        });
+      }
+    } catch (error) {
+      res.status(404).send({
+        success: false,
+        message: error.message
+      });
+    }
+  });
 module.exports = router;
